@@ -112,12 +112,33 @@ jobs:
           notes="Final clean build for VAG 1.9.28 on rootful iOS 14. Bypasses the update check and fixes login compatibility."
           deb="$(echo packages/*.deb)"
 
-          if gh release view "$tag" >/dev/null 2>&1; then
+          find_release_id() {
+            gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
+              --jq ".[] | select(.tag_name == \"${tag}\") | .id" | head -n1 || true
+          }
+
+          release_id="$(find_release_id)"
+          if [[ -n "$release_id" ]]; then
+            gh api --method PATCH "repos/${GITHUB_REPOSITORY}/releases/${release_id}" \
+              -f name="$title" -f body="$notes" -F draft=false >/dev/null
             gh release upload "$tag" "$deb" --clobber
-            gh release edit "$tag" --title "$title" --notes "$notes" --draft=false
-          else
-            gh release create "$tag" "$deb" --target "$GITHUB_SHA" --title "$title" --notes "$notes"
+            exit 0
           fi
+
+          if gh release create "$tag" "$deb" --target "$GITHUB_SHA" --title "$title" --notes "$notes"; then
+            exit 0
+          fi
+
+          sleep 3
+          release_id="$(find_release_id)"
+          if [[ -z "$release_id" ]]; then
+            echo "Release creation failed and no draft was found."
+            exit 1
+          fi
+
+          gh api --method PATCH "repos/${GITHUB_REPOSITORY}/releases/${release_id}" \
+            -f name="$title" -f body="$notes" -F draft=false >/dev/null
+          gh release upload "$tag" "$deb" --clobber
 
       - name: Remove previous builds
         env:
@@ -131,12 +152,12 @@ jobs:
           while read -r release_id release_tag; do
             [[ -z "${release_id:-}" ]] && continue
             [[ "$release_tag" == "$final_tag" ]] && continue
-            gh api --method DELETE "repos/${GITHUB_REPOSITORY}/releases/${release_id}"
+            gh api --method DELETE "repos/${GITHUB_REPOSITORY}/releases/${release_id}" >/dev/null 2>&1 || true
             gh api --method DELETE "repos/${GITHUB_REPOSITORY}/git/refs/tags/${release_tag}" >/dev/null 2>&1 || true
           done < <(gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --jq '.[] | "\(.id) \(.tag_name)"')
 
           while read -r artifact_id; do
             [[ -z "${artifact_id:-}" ]] && continue
-            gh api --method DELETE "repos/${GITHUB_REPOSITORY}/actions/artifacts/${artifact_id}"
+            gh api --method DELETE "repos/${GITHUB_REPOSITORY}/actions/artifacts/${artifact_id}" >/dev/null 2>&1 || true
           done < <(gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts?per_page=100" \
             --jq ".artifacts[] | select(.workflow_run.id != ${GITHUB_RUN_ID}) | .id")
