@@ -58,7 +58,7 @@ jobs:
           deb="${debs[0]}"
           test "$(dpkg-deb -f "$deb" Architecture)" = "iphoneos-arm"
           test "$(dpkg-deb -f "$deb" Package)" = "com.551.obdelevenupdatebypass"
-          test "$(dpkg-deb -f "$deb" Version)" = "1.0.6"
+          test "$(dpkg-deb -f "$deb" Version)" = "1.0.7"
           dpkg-deb -x "$deb" "$RUNNER_TEMP/obd11-check"
           root="$RUNNER_TEMP/obd11-check"
           dylib="$root/Library/MobileSubstrate/DynamicLibraries/OBDelevenUpdateBypass.dylib"
@@ -86,7 +86,10 @@ jobs:
           grep -q 'x-mobile-app-build' Tweak.m
           grep -q 'server1.obdeleven.com' Tweak.m
           grep -q 'api.obdeleven.com' Tweak.m
-          echo "OBD11 VAG 1.9.28 Parse-login and REST spoof package validation passed."
+          grep -q 'RestApi.ParseAuthClient' Tweak.m
+          grep -q 'Alamofire.SessionDelegate' LoginDiagnostics.m
+          grep -q 'temporary-password' LoginDiagnostics.m
+          echo "OBD11 VAG 1.9.28 RestApi/Parse login compatibility package validation passed."
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
@@ -104,7 +107,7 @@ jobs:
           version="$(sed -n 's/^Version: //p' control)"
           tag="v${version}"
           title="OBD11 VAG Bypass iOS 14 ${version}"
-          notes="Diagnostic build for VAG 1.9.28 on rootful iOS 14. Keeps the update bypass and applies version headers directly to Parse requests. If login fails, the popup now shows connection/server error codes. Close and reopen VAG, try login, and send a screenshot. Login fix is not yet confirmed. No credentials or tokens are logged."
+          notes="VAG 1.9.28 rootful iOS 14 login compatibility build. Adds x-mobile-app-version/x-mobile-app-build to the server1 RestApi password-check path, hooks the concrete NSURLSession path used by Alamofire, and traces the RestApi/Parse auth response if login still fails. No credentials, response text, session tokens or temporary passwords are logged."
           if gh release view "$tag" >/dev/null 2>&1; then
             gh release upload "$tag" packages/*.deb --clobber
             gh release edit "$tag" --title "$title" --notes "$notes"

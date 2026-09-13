@@ -1,4 +1,5 @@
 #import <Foundation/Foundation.h>
+#import <objc/runtime.h>
 #include <substrate.h>
 #include <mach-o/dyld.h>
 #include <stdint.h>
@@ -43,16 +44,16 @@ NSURLRequest *OBDRequestBySpoofingServerIdentity(NSURLRequest *request) {
 
     NSMutableURLRequest *mutable = [request mutableCopy];
 
-    // Username/password login in VAG 1.9.28 still uses Parse/PFUser.
+    // RestApi.ParseAuthClient sends its password-verification request to
+    // server1.obdeleven.com, so both OBDeleven mobile headers must be present on
+    // that host too (not only api.obdeleven.com).
+    [mutable setValue:kServerVersion forHTTPHeaderField:@"x-mobile-app-version"];
+    [mutable setValue:kServerBuild forHTTPHeaderField:@"x-mobile-app-build"];
+
+    // Parse/PFUser login also runs on server1 and uses Parse's app version keys.
     if (parseHost) {
         [mutable setValue:kServerVersion forHTTPHeaderField:@"X-Parse-App-Display-Version"];
         [mutable setValue:kServerBuild forHTTPHeaderField:@"X-Parse-App-Build-Version"];
-    }
-
-    // The newer REST API uses OBDeleven's own mobile client headers.
-    if (restHost) {
-        [mutable setValue:kServerVersion forHTTPHeaderField:@"x-mobile-app-version"];
-        [mutable setValue:kServerBuild forHTTPHeaderField:@"x-mobile-app-build"];
     }
 
     // Keep the real device/iOS identity but replace the old app version/build if present.
@@ -71,7 +72,14 @@ NSURLRequest *OBDRequestBySpoofingServerIdentity(NSURLRequest *request) {
 typedef NSURLSessionDataTask *(*DataTaskRequestCompletionIMP)(
     NSURLSession *, SEL, NSURLRequest *,
     void (^)(NSData *, NSURLResponse *, NSError *));
+typedef NSURLSessionDataTask *(*DataTaskRequestIMP)(NSURLSession *, SEL, NSURLRequest *);
+typedef NSURLSessionUploadTask *(*UploadTaskDataCompletionIMP)(
+    NSURLSession *, SEL, NSURLRequest *, NSData *,
+    void (^)(NSData *, NSURLResponse *, NSError *));
+
 static DataTaskRequestCompletionIMP originalDataTaskRequestCompletion = NULL;
+static DataTaskRequestIMP originalDataTaskRequest = NULL;
+static UploadTaskDataCompletionIMP originalUploadTaskDataCompletion = NULL;
 
 static NSURLSessionDataTask *spoofedDataTaskRequestCompletion(
     NSURLSession *self,
@@ -82,20 +90,12 @@ static NSURLSessionDataTask *spoofedDataTaskRequestCompletion(
         self, _cmd, OBDRequestBySpoofingServerIdentity(request), completion);
 }
 
-typedef NSURLSessionDataTask *(*DataTaskRequestIMP)(NSURLSession *, SEL, NSURLRequest *);
-static DataTaskRequestIMP originalDataTaskRequest = NULL;
-
 static NSURLSessionDataTask *spoofedDataTaskRequest(
     NSURLSession *self,
     SEL _cmd,
     NSURLRequest *request) {
     return originalDataTaskRequest(self, _cmd, OBDRequestBySpoofingServerIdentity(request));
 }
-
-typedef NSURLSessionUploadTask *(*UploadTaskDataCompletionIMP)(
-    NSURLSession *, SEL, NSURLRequest *, NSData *,
-    void (^)(NSData *, NSURLResponse *, NSError *));
-static UploadTaskDataCompletionIMP originalUploadTaskDataCompletion = NULL;
 
 static NSURLSessionUploadTask *spoofedUploadTaskDataCompletion(
     NSURLSession *self,
@@ -105,6 +105,44 @@ static NSURLSessionUploadTask *spoofedUploadTaskDataCompletion(
     void (^completion)(NSData *, NSURLResponse *, NSError *)) {
     return originalUploadTaskDataCompletion(
         self, _cmd, OBDRequestBySpoofingServerIdentity(request), bodyData, completion);
+}
+
+// Alamofire on iOS 14 creates tasks on NSURLSession's concrete class. Hooking
+// NSURLSession itself is retained, but these hooks cover the class-cluster path
+// used by RestApi.ParseAuthClient as well.
+static DataTaskRequestCompletionIMP originalConcreteDataTaskRequestCompletion = NULL;
+static DataTaskRequestIMP originalConcreteDataTaskRequest = NULL;
+static UploadTaskDataCompletionIMP originalConcreteUploadTaskDataCompletion = NULL;
+
+static NSURLSessionDataTask *spoofedConcreteDataTaskRequestCompletion(
+    NSURLSession *self,
+    SEL _cmd,
+    NSURLRequest *request,
+    void (^completion)(NSData *, NSURLResponse *, NSError *)) {
+    return originalConcreteDataTaskRequestCompletion(
+        self, _cmd, OBDRequestBySpoofingServerIdentity(request), completion);
+}
+
+static NSURLSessionDataTask *spoofedConcreteDataTaskRequest(
+    NSURLSession *self,
+    SEL _cmd,
+    NSURLRequest *request) {
+    return originalConcreteDataTaskRequest(
+        self, _cmd, OBDRequestBySpoofingServerIdentity(request));
+}
+
+static NSURLSessionUploadTask *spoofedConcreteUploadTaskDataCompletion(
+    NSURLSession *self,
+    SEL _cmd,
+    NSURLRequest *request,
+    NSData *bodyData,
+    void (^completion)(NSData *, NSURLResponse *, NSError *)) {
+    return originalConcreteUploadTaskDataCompletion(
+        self, _cmd, OBDRequestBySpoofingServerIdentity(request), bodyData, completion);
+}
+
+static BOOL classHasSelector(Class cls, SEL selector) {
+    return cls && class_getInstanceMethod(cls, selector) != NULL;
 }
 
 static void installNetworkSpoofs(void) {
@@ -124,6 +162,32 @@ static void installNetworkSpoofs(void) {
                     @selector(uploadTaskWithRequest:fromData:completionHandler:),
                     (IMP)spoofedUploadTaskDataCompletion,
                     (IMP *)&originalUploadTaskDataCompletion);
+
+    NSURLSession *probe = [NSURLSession sessionWithConfiguration:
+                           [NSURLSessionConfiguration ephemeralSessionConfiguration]];
+    Class concreteClass = [probe class];
+    if (concreteClass && concreteClass != sessionClass) {
+        if (classHasSelector(concreteClass, @selector(dataTaskWithRequest:completionHandler:))) {
+            MSHookMessageEx(concreteClass,
+                            @selector(dataTaskWithRequest:completionHandler:),
+                            (IMP)spoofedConcreteDataTaskRequestCompletion,
+                            (IMP *)&originalConcreteDataTaskRequestCompletion);
+        }
+        if (classHasSelector(concreteClass, @selector(dataTaskWithRequest:))) {
+            MSHookMessageEx(concreteClass,
+                            @selector(dataTaskWithRequest:),
+                            (IMP)spoofedConcreteDataTaskRequest,
+                            (IMP *)&originalConcreteDataTaskRequest);
+        }
+        if (classHasSelector(concreteClass, @selector(uploadTaskWithRequest:fromData:completionHandler:))) {
+            MSHookMessageEx(concreteClass,
+                            @selector(uploadTaskWithRequest:fromData:completionHandler:),
+                            (IMP)spoofedConcreteUploadTaskDataCompletion,
+                            (IMP *)&originalConcreteUploadTaskDataCompletion);
+        }
+        NSLog(@"[OBD11VAG-iOS14] Concrete NSURLSession hook class: %@", NSStringFromClass(concreteClass));
+    }
+    [probe invalidateAndCancel];
 }
 
 __attribute__((constructor))
@@ -153,7 +217,7 @@ static void Init(void) {
         installNetworkSpoofs();
         OBDInstallLoginDiagnostics();
 
-        NSLog(@"[OBD11VAG-iOS14] 1.9.28 patched; Parse/REST identity %@ (%@)",
+        NSLog(@"[OBD11VAG-iOS14] 1.9.28 patched; Parse/RestApi identity %@ (%@)",
               kServerVersion, kServerBuild);
     }
 }
