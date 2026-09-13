@@ -58,7 +58,7 @@ jobs:
           deb="${debs[0]}"
           test "$(dpkg-deb -f "$deb" Architecture)" = "iphoneos-arm"
           test "$(dpkg-deb -f "$deb" Package)" = "com.551.obdelevenupdatebypass"
-          test "$(dpkg-deb -f "$deb" Version)" = "1.0.3"
+          test "$(dpkg-deb -f "$deb" Version)" = "1.0.4"
           dpkg-deb -x "$deb" "$RUNNER_TEMP/obd11-check"
           root="$RUNNER_TEMP/obd11-check"
           dylib="$root/Library/MobileSubstrate/DynamicLibraries/OBDelevenUpdateBypass.dylib"
@@ -78,7 +78,11 @@ jobs:
           grep -q '1704712364' Tweak.m
           grep -q '0x00367F04' Tweak.m
           grep -q '0xE0, 0xA7, 0x9F, 0x1A' Tweak.m
-          echo "OBD11 VAG 1.9.28 rootful package validation passed."
+          grep -q '1.9.73' Tweak.m
+          grep -q '1785335496' Tweak.m
+          grep -q 'x-mobile-app-version' Tweak.m
+          grep -q 'x-mobile-app-build' Tweak.m
+          echo "OBD11 VAG 1.9.28 rootful network-spoof package validation passed."
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
@@ -96,7 +100,7 @@ jobs:
           version="$(sed -n 's/^Version: //p' control)"
           tag="v${version}"
           title="OBD11 VAG Bypass iOS 14 ${version}"
-          notes="Corrected rootful iOS 14 build for OBD11 VAG 1.9.28 (build 1704712364). Targets the verified force-update comparison result and avoids the global Foundation/network hooks that caused startup crashes."
+          notes="For OBD11 VAG 1.9.28 on rootful iOS 14. Keeps the verified force-update patch and now spoofs outgoing x-mobile-app-version/x-mobile-app-build (plus matching User-Agent values) as current VAG 1.9.73 build 1785335496 for login/API testing."
           if gh release view "$tag" >/dev/null 2>&1; then
             gh release upload "$tag" packages/*.deb --clobber
             gh release edit "$tag" --title "$title" --notes "$notes"
