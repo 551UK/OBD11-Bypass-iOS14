@@ -59,7 +59,7 @@ jobs:
           deb="${debs[0]}"
           test "$(dpkg-deb -f "$deb" Architecture)" = "iphoneos-arm"
           test "$(dpkg-deb -f "$deb" Package)" = "com.551.obdelevenupdatebypass"
-          test "$(dpkg-deb -f "$deb" Version)" = "1.0.9"
+          test "$(dpkg-deb -f "$deb" Version)" = "1.1.0"
           dpkg-deb -x "$deb" "$RUNNER_TEMP/obd11-check"
           root="$RUNNER_TEMP/obd11-check"
           dylib="$root/Library/MobileSubstrate/DynamicLibraries/OBDelevenUpdateBypass.dylib"
@@ -80,6 +80,11 @@ jobs:
           grep -q '0x00367F04' Tweak.m
           grep -q '1.9.73' Tweak.m
           grep -q '1785335496' Tweak.m
+          grep -q 'vagSpoofedVersion' Tweak.m
+          grep -q 'vagSpoofedBuild' Tweak.m
+          grep -q 'CFBundleShortVersionString' Tweak.m
+          grep -q 'CFBundleVersion' Tweak.m
+          grep -q 'CFBundleGetValueForInfoDictionaryKey' Tweak.m
           grep -q 'PARSE_API_URL' Tweak.m
           grep -q 'server1.obdeleven.com' Tweak.m
           grep -q 'parse.obdeleven.com' Tweak.m
@@ -88,10 +93,12 @@ jobs:
           grep -q 'x-mobile-app-build' Tweak.m
           grep -q 'X-Parse-App-Display-Version' Tweak.m
           grep -q 'X-Parse-App-Build-Version' Tweak.m
+          grep -q 'vagSpoofedVersion' prefs/Resources/Root.plist
+          grep -q 'vagSpoofedBuild' prefs/Resources/Root.plist
           grep -q 'PFURLSession' LoginDiagnostics.m
           grep -q 'OBDInstallLoginCompatibility' LoginDiagnostics.m
           ! grep -q 'UIAlertController' LoginDiagnostics.m
-          echo "Final OBD11 VAG iOS 14 package validation passed."
+          echo "OBD11 VAG iOS 14 1.1.0 version spoofer validation passed."
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
@@ -109,7 +116,7 @@ jobs:
           version="$(sed -n 's/^Version: //p' control)"
           tag="v${version}"
           title="OBD11 VAG Bypass iOS 14 ${version}"
-          notes="Final clean build for VAG 1.9.28 on rootful iOS 14. Bypasses the update check and fixes login compatibility."
+          notes="VAG 1.9.28 rootful iOS 14 build with update bypass, login compatibility and editable version/build spoofing."
           deb="$(echo packages/*.deb)"
 
           find_release_id() {
