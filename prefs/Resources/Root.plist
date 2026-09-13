@@ -6,6 +6,41 @@
 	<array>
 		<dict>
 			<key>cell</key><string>PSGroupCell</string>
+			<key>label</key><string>OBDeleven 1.2.1 (BMW)</string>
+			<key>footerText</key><string>Defaults to the current OBDeleven version 2.11.0. Fully close and reopen the app after changes.</string>
+		</dict>
+		<dict>
+			<key>defaults</key><string>com.551.obdelevenupdatebypass</string>
+			<key>cell</key><string>PSSwitchCell</string>
+			<key>key</key><string>enabled</string>
+			<key>default</key><true/>
+			<key>label</key><string>Enabled</string>
+			<key>PostNotification</key><string>com.551.obdelevenupdatebypass/preferences.changed</string>
+		</dict>
+		<dict>
+			<key>defaults</key><string>com.551.obdelevenupdatebypass</string>
+			<key>cell</key><string>PSEditTextCell</string>
+			<key>key</key><string>spoofedVersion</string>
+			<key>default</key><string>2.11.0</string>
+			<key>label</key><string>Spoof Version</string>
+			<key>PostNotification</key><string>com.551.obdelevenupdatebypass/preferences.changed</string>
+		</dict>
+		<dict>
+			<key>defaults</key><string>com.551.obdelevenupdatebypass</string>
+			<key>cell</key><string>PSEditTextCell</string>
+			<key>key</key><string>spoofedBuild</string>
+			<key>default</key><string>2147483647</string>
+			<key>label</key><string>Spoof Build</string>
+			<key>PostNotification</key><string>com.551.obdelevenupdatebypass/preferences.changed</string>
+		</dict>
+		<dict>
+			<key>cell</key><string>PSButtonCell</string>
+			<key>label</key><string>Reset OBDeleven Defaults</string>
+			<key>action</key><string>resetOBDDefaults</string>
+		</dict>
+
+		<dict>
+			<key>cell</key><string>PSGroupCell</string>
 			<key>label</key><string>OBD11 VAG 1.9.28</string>
 			<key>footerText</key><string>Change the spoofed version/build when needed. Fully close and reopen VAG after changes.</string>
 		</dict>
@@ -35,9 +70,10 @@
 		</dict>
 		<dict>
 			<key>cell</key><string>PSButtonCell</string>
-			<key>label</key><string>Reset Defaults</string>
-			<key>action</key><string>resetSpoofDefaults</string>
+			<key>label</key><string>Reset VAG Defaults</string>
+			<key>action</key><string>resetVAGDefaults</string>
 		</dict>
+
 		<dict>
 			<key>cell</key><string>PSButtonCell</string>
 			<key>label</key><string>Respring</string>
@@ -49,6 +85,6 @@
 			<key>action</key><string>openGitHub</string>
 		</dict>
 	</array>
-	<key>title</key><string>OBD11 VAG Bypass iOS 14</string>
+	<key>title</key><string>OBD11 Bypass iOS 14</string>
 </dict>
 </plist>
