@@ -23,15 +23,37 @@ static BOOL tweakEnabled(void) {
     return value ? [value boolValue] : YES;
 }
 
+static BOOL isParseHost(NSString *host) {
+    return [host caseInsensitiveCompare:@"server1.obdeleven.com"] == NSOrderedSame;
+}
+
+static BOOL isRestHost(NSString *host) {
+    return [host caseInsensitiveCompare:@"api.obdeleven.com"] == NSOrderedSame;
+}
+
 static NSURLRequest *requestBySpoofingServerIdentity(NSURLRequest *request) {
     if (!request) return request;
 
-    NSMutableURLRequest *mutable = [request mutableCopy];
-    [mutable setValue:kServerVersion forHTTPHeaderField:@"x-mobile-app-version"];
-    [mutable setValue:kServerBuild forHTTPHeaderField:@"x-mobile-app-build"];
+    NSString *host = request.URL.host ?: @"";
+    BOOL parseHost = isParseHost(host);
+    BOOL restHost = isRestHost(host);
+    if (!parseHost && !restHost) return request;
 
-    // Older VAG builds also expose their app version/build through the User-Agent.
-    // Rewrite only those two known values and leave device/OS identity unchanged.
+    NSMutableURLRequest *mutable = [request mutableCopy];
+
+    // Username/password login in VAG 1.9.28 still uses Parse/PFUser.
+    if (parseHost) {
+        [mutable setValue:kServerVersion forHTTPHeaderField:@"X-Parse-App-Display-Version"];
+        [mutable setValue:kServerBuild forHTTPHeaderField:@"X-Parse-App-Build-Version"];
+    }
+
+    // The newer REST API uses OBDeleven's own mobile client headers.
+    if (restHost) {
+        [mutable setValue:kServerVersion forHTTPHeaderField:@"x-mobile-app-version"];
+        [mutable setValue:kServerBuild forHTTPHeaderField:@"x-mobile-app-build"];
+    }
+
+    // Keep the real device/iOS identity but replace the old app version/build if present.
     NSString *userAgent = [mutable valueForHTTPHeaderField:@"User-Agent"];
     if (userAgent.length > 0) {
         NSString *spoofed = [userAgent stringByReplacingOccurrencesOfString:kTargetVersion
@@ -128,7 +150,7 @@ static void Init(void) {
         MSHookMemory(target, kNoUpdateInstruction, sizeof(kNoUpdateInstruction));
         installNetworkSpoofs();
 
-        NSLog(@"[OBD11VAG-iOS14] 1.9.28 patched; server identity %@ (%@)",
+        NSLog(@"[OBD11VAG-iOS14] 1.9.28 patched; Parse/REST identity %@ (%@)",
               kServerVersion, kServerBuild);
     }
 }
