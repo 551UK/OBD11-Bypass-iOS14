@@ -1,4 +1,5 @@
 #import <Foundation/Foundation.h>
+#import <CoreFoundation/CoreFoundation.h>
 #import <objc/runtime.h>
 #include <substrate.h>
 #include <mach-o/dyld.h>
@@ -10,21 +11,60 @@ extern void OBDInstallLoginCompatibility(void);
 static NSString *const kTargetBundle = @"com.voltasit.obdeleven.ios";
 static NSString *const kTargetVersion = @"1.9.28";
 static NSString *const kTargetBuild = @"1704712364";
-static NSString *const kServerVersion = @"1.9.73";
-static NSString *const kServerBuild = @"1785335496";
+static NSString *const kDefaultSpoofedVersion = @"1.9.73";
+static NSString *const kDefaultSpoofedBuild = @"1785335496";
 static NSString *const kLegacyParseHost = @"server1.obdeleven.com";
 static NSString *const kCurrentParseHost = @"parse.obdeleven.com";
 static NSString *const kRestHost = @"api.obdeleven.com";
 static NSString *const kPreferencesPath = @"/var/mobile/Library/Preferences/com.551.obdelevenupdatebypass.plist";
+static CFStringRef const kPreferencesChangedNotification = CFSTR("com.551.obdelevenupdatebypass/preferences.changed");
 
 static const uintptr_t kUpdateResultOffset = 0x00367F04;
 static const uint8_t kExpectedInstruction[4] = {0xE0, 0xA7, 0x9F, 0x1A};
 static const uint8_t kNoUpdateInstruction[4] = {0x00, 0x00, 0x80, 0x52};
 
+static BOOL gEnabled = YES;
+static NSString *gSpoofedVersion;
+static NSString *gSpoofedBuild;
+static NSBundle *gMainBundle;
+
+static BOOL validValue(NSString *value, BOOL allowDots) {
+    if (![value isKindOfClass:[NSString class]] || value.length == 0 || value.length > 64) return NO;
+    NSCharacterSet *allowed = allowDots
+        ? [NSCharacterSet characterSetWithCharactersInString:@"0123456789."]
+        : [NSCharacterSet decimalDigitCharacterSet];
+    return [value rangeOfCharacterFromSet:[allowed invertedSet]].location == NSNotFound;
+}
+
+static void loadPreferences(void) {
+    NSDictionary *prefs = [NSDictionary dictionaryWithContentsOfFile:kPreferencesPath] ?: @{};
+    id enabled = prefs[@"vagEnabled"];
+    NSString *version = prefs[@"vagSpoofedVersion"];
+    NSString *build = prefs[@"vagSpoofedBuild"];
+
+    @synchronized ([NSBundle class]) {
+        gEnabled = enabled ? [enabled boolValue] : YES;
+        gSpoofedVersion = validValue(version, YES) ? [version copy] : kDefaultSpoofedVersion;
+        gSpoofedBuild = validValue(build, NO) ? [build copy] : kDefaultSpoofedBuild;
+    }
+}
+
+static void preferencesChanged(CFNotificationCenterRef center, void *observer,
+                               CFStringRef name, const void *object,
+                               CFDictionaryRef userInfo) {
+    loadPreferences();
+}
+
+static NSString *spoofedVersion(void) {
+    @synchronized ([NSBundle class]) { return gSpoofedVersion ?: kDefaultSpoofedVersion; }
+}
+
+static NSString *spoofedBuild(void) {
+    @synchronized ([NSBundle class]) { return gSpoofedBuild ?: kDefaultSpoofedBuild; }
+}
+
 static BOOL tweakEnabled(void) {
-    NSDictionary *prefs = [NSDictionary dictionaryWithContentsOfFile:kPreferencesPath];
-    id value = prefs[@"vagEnabled"];
-    return value ? [value boolValue] : YES;
+    @synchronized ([NSBundle class]) { return gEnabled; }
 }
 
 static BOOL isLegacyParseHost(NSString *host) {
@@ -40,23 +80,44 @@ static BOOL isRestHost(NSString *host) {
     return [host caseInsensitiveCompare:kRestHost] == NSOrderedSame;
 }
 
+#pragma mark - Bundle identity / Parse config
+
 static id (*originalBundleObjectForInfoKey)(NSBundle *, SEL, NSString *);
 static id spoofedBundleObjectForInfoKey(NSBundle *self, SEL cmd, NSString *key) {
-    if (self == [NSBundle mainBundle] && [key isEqualToString:@"PARSE_API_URL"])
-        return kCurrentParseHost;
+    if (self == gMainBundle && tweakEnabled()) {
+        if ([key isEqualToString:@"CFBundleShortVersionString"]) return spoofedVersion();
+        if ([key isEqualToString:@"CFBundleVersion"]) return spoofedBuild();
+        if ([key isEqualToString:@"PARSE_API_URL"]) return kCurrentParseHost;
+    }
     return originalBundleObjectForInfoKey(self, cmd, key);
 }
 
 static NSDictionary *(*originalBundleInfoDictionary)(NSBundle *, SEL);
 static NSDictionary *spoofedBundleInfoDictionary(NSBundle *self, SEL cmd) {
     NSDictionary *original = originalBundleInfoDictionary(self, cmd);
-    if (self != [NSBundle mainBundle] || !original) return original;
+    if (self != gMainBundle || !original || !tweakEnabled()) return original;
+
     NSMutableDictionary *copy = [original mutableCopy];
+    copy[@"CFBundleShortVersionString"] = spoofedVersion();
+    copy[@"CFBundleVersion"] = spoofedBuild();
     copy[@"PARSE_API_URL"] = kCurrentParseHost;
     return copy;
 }
 
-static void installParseConfigSpoof(void) {
+static CFTypeRef (*originalCFBundleGetValueForInfoDictionaryKey)(CFBundleRef, CFStringRef);
+static CFTypeRef spoofedCFBundleGetValueForInfoDictionaryKey(CFBundleRef bundle, CFStringRef key) {
+    if (bundle == CFBundleGetMainBundle() && tweakEnabled() && key) {
+        if (CFEqual(key, CFSTR("CFBundleShortVersionString")))
+            return (__bridge CFTypeRef)spoofedVersion();
+        if (CFEqual(key, CFSTR("CFBundleVersion")))
+            return (__bridge CFTypeRef)spoofedBuild();
+        if (CFEqual(key, CFSTR("PARSE_API_URL")))
+            return (__bridge CFTypeRef)kCurrentParseHost;
+    }
+    return originalCFBundleGetValueForInfoDictionaryKey(bundle, key);
+}
+
+static void installBundleSpoofs(void) {
     Class cls = [NSBundle class];
     MSHookMessageEx(cls,
                     @selector(objectForInfoDictionaryKey:),
@@ -66,16 +127,23 @@ static void installParseConfigSpoof(void) {
                     @selector(infoDictionary),
                     (IMP)spoofedBundleInfoDictionary,
                     (IMP *)&originalBundleInfoDictionary);
+    MSHookFunction((void *)CFBundleGetValueForInfoDictionaryKey,
+                   (void *)spoofedCFBundleGetValueForInfoDictionaryKey,
+                   (void **)&originalCFBundleGetValueForInfoDictionaryKey);
 }
 
+#pragma mark - Network identity
+
 NSURLRequest *OBDRequestBySpoofingServerIdentity(NSURLRequest *request) {
-    if (!request) return request;
+    if (!request || !tweakEnabled()) return request;
 
     NSString *host = request.URL.host ?: @"";
     BOOL parseHost = isParseHost(host);
     BOOL restHost = isRestHost(host);
     if (!parseHost && !restHost) return request;
 
+    NSString *version = spoofedVersion();
+    NSString *build = spoofedBuild();
     NSMutableURLRequest *mutable = [request mutableCopy];
 
     if (isLegacyParseHost(host)) {
@@ -85,20 +153,20 @@ NSURLRequest *OBDRequestBySpoofingServerIdentity(NSURLRequest *request) {
         if (components.URL) mutable.URL = components.URL;
     }
 
-    [mutable setValue:kServerVersion forHTTPHeaderField:@"x-mobile-app-version"];
-    [mutable setValue:kServerBuild forHTTPHeaderField:@"x-mobile-app-build"];
+    [mutable setValue:version forHTTPHeaderField:@"x-mobile-app-version"];
+    [mutable setValue:build forHTTPHeaderField:@"x-mobile-app-build"];
 
     if (parseHost) {
-        [mutable setValue:kServerVersion forHTTPHeaderField:@"X-Parse-App-Display-Version"];
-        [mutable setValue:kServerBuild forHTTPHeaderField:@"X-Parse-App-Build-Version"];
+        [mutable setValue:version forHTTPHeaderField:@"X-Parse-App-Display-Version"];
+        [mutable setValue:build forHTTPHeaderField:@"X-Parse-App-Build-Version"];
     }
 
     NSString *userAgent = [mutable valueForHTTPHeaderField:@"User-Agent"];
     if (userAgent.length) {
         NSString *spoofed = [userAgent stringByReplacingOccurrencesOfString:kTargetVersion
-                                                                 withString:kServerVersion];
+                                                                 withString:version];
         spoofed = [spoofed stringByReplacingOccurrencesOfString:kTargetBuild
-                                                     withString:kServerBuild];
+                                                     withString:build];
         [mutable setValue:spoofed forHTTPHeaderField:@"User-Agent"];
     }
 
@@ -209,13 +277,15 @@ static void installNetworkSpoofs(void) {
 __attribute__((constructor))
 static void Init(void) {
     @autoreleasepool {
-        NSBundle *bundle = [NSBundle mainBundle];
-        if (![[bundle bundleIdentifier] isEqualToString:kTargetBundle]) return;
-        if (!tweakEnabled()) return;
+        gMainBundle = [NSBundle mainBundle];
+        if (![[gMainBundle bundleIdentifier] isEqualToString:kTargetBundle]) return;
 
-        NSString *version = [bundle objectForInfoDictionaryKey:@"CFBundleShortVersionString"];
-        NSString *build = [bundle objectForInfoDictionaryKey:@"CFBundleVersion"];
-        if (![version isEqualToString:kTargetVersion] || ![build isEqualToString:kTargetBuild]) return;
+        NSString *realVersion = [gMainBundle objectForInfoDictionaryKey:@"CFBundleShortVersionString"];
+        NSString *realBuild = [gMainBundle objectForInfoDictionaryKey:@"CFBundleVersion"];
+        if (![realVersion isEqualToString:kTargetVersion] || ![realBuild isEqualToString:kTargetBuild]) return;
+
+        loadPreferences();
+        if (!tweakEnabled()) return;
 
         const struct mach_header *header = _dyld_get_image_header(0);
         if (!header) return;
@@ -224,8 +294,15 @@ static void Init(void) {
         if (memcmp(target, kExpectedInstruction, sizeof(kExpectedInstruction)) != 0) return;
 
         MSHookMemory(target, kNoUpdateInstruction, sizeof(kNoUpdateInstruction));
-        installParseConfigSpoof();
+        installBundleSpoofs();
         installNetworkSpoofs();
         OBDInstallLoginCompatibility();
+
+        CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(),
+                                        NULL,
+                                        preferencesChanged,
+                                        kPreferencesChangedNotification,
+                                        NULL,
+                                        CFNotificationSuspensionBehaviorDeliverImmediately);
     }
 }
