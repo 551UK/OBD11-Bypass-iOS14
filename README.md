@@ -2,5 +2,4 @@
 
 Keeps **OBDeleven VAG 1.9.28** working on **rootful iOS 14**.
 
-Bypasses the update check and fixes login compatibility.
-
+Bypasses the update check, fixes login compatibility, and lets you change the spoofed version/build in Settings.
