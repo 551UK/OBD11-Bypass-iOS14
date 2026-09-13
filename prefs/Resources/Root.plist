@@ -7,7 +7,7 @@
 		<dict>
 			<key>cell</key><string>PSGroupCell</string>
 			<key>label</key><string>OBD11 VAG 1.9.28</string>
-			<key>footerText</key><string>Keeps VAG 1.9.28 working on rootful iOS 14. Fully close and reopen VAG after changing Enabled.</string>
+			<key>footerText</key><string>Change the spoofed version/build when needed. Fully close and reopen VAG after changes.</string>
 		</dict>
 		<dict>
 			<key>defaults</key><string>com.551.obdelevenupdatebypass</string>
@@ -15,6 +15,28 @@
 			<key>key</key><string>vagEnabled</string>
 			<key>default</key><true/>
 			<key>label</key><string>Enabled</string>
+			<key>PostNotification</key><string>com.551.obdelevenupdatebypass/preferences.changed</string>
+		</dict>
+		<dict>
+			<key>defaults</key><string>com.551.obdelevenupdatebypass</string>
+			<key>cell</key><string>PSEditTextCell</string>
+			<key>key</key><string>vagSpoofedVersion</string>
+			<key>default</key><string>1.9.73</string>
+			<key>label</key><string>Spoof Version</string>
+			<key>PostNotification</key><string>com.551.obdelevenupdatebypass/preferences.changed</string>
+		</dict>
+		<dict>
+			<key>defaults</key><string>com.551.obdelevenupdatebypass</string>
+			<key>cell</key><string>PSEditTextCell</string>
+			<key>key</key><string>vagSpoofedBuild</string>
+			<key>default</key><string>1785335496</string>
+			<key>label</key><string>Spoof Build</string>
+			<key>PostNotification</key><string>com.551.obdelevenupdatebypass/preferences.changed</string>
+		</dict>
+		<dict>
+			<key>cell</key><string>PSButtonCell</string>
+			<key>label</key><string>Reset Defaults</string>
+			<key>action</key><string>resetSpoofDefaults</string>
 		</dict>
 		<dict>
 			<key>cell</key><string>PSButtonCell</string>
