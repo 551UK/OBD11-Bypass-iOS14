@@ -1,9 +1,9 @@
 Package: com.551.obdelevenupdatebypass
 Name: OBD11 VAG Bypass iOS 14
-Version: 1.0.1
+Version: 1.0.2
 Architecture: iphoneos-arm
 Maintainer: 551
 Author: 551
 Section: Tweaks
 Depends: firmware (>= 14.0), mobilesubstrate, preferenceloader
-Description: Rootful iOS 14 compatibility bypass for OBD11 VAG. Minimal VAG-only build to avoid startup crashes.
+Description: Rootful iOS 14 bypass for OBD11 VAG 1.9.28. Patches the app's own update check.

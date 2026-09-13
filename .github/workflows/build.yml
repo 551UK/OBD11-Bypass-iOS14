@@ -58,7 +58,7 @@ jobs:
           deb="${debs[0]}"
           test "$(dpkg-deb -f "$deb" Architecture)" = "iphoneos-arm"
           test "$(dpkg-deb -f "$deb" Package)" = "com.551.obdelevenupdatebypass"
-          test "$(dpkg-deb -f "$deb" Version)" = "1.0.1"
+          test "$(dpkg-deb -f "$deb" Version)" = "1.0.2"
           dpkg-deb -x "$deb" "$RUNNER_TEMP/obd11-check"
           root="$RUNNER_TEMP/obd11-check"
           dylib="$root/Library/MobileSubstrate/DynamicLibraries/OBDelevenUpdateBypass.dylib"
@@ -74,7 +74,9 @@ jobs:
           plutil -lint "$bundle/Info.plist"
           grep -q 'com.voltasit.obdeleven.ios' "$filter"
           ! grep -q 'com.voltasit.obdeleven.ios.basic' "$filter"
-          echo "VAG-only rootful package validation passed."
+          grep -q '1.9.28' Tweak.m
+          grep -q '1704712364' Tweak.m
+          echo "OBD11 VAG 1.9.28 rootful package validation passed."
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
@@ -92,7 +94,7 @@ jobs:
           version="$(sed -n 's/^Version: //p' control)"
           tag="v${version}"
           title="OBD11 VAG Bypass iOS 14 ${version}"
-          notes="VAG-only rootful iOS 14 compatibility build. Removes the CoreFoundation and NSURLSession hooks from 1.0.0 and keeps only the NSBundle version/build interception used by VAG's forced-update check."
+          notes="Rootful iOS 14 build made specifically for OBD11 VAG 1.9.28 (build 1704712364). Uses a targeted app-version check and no global Foundation or network hooks."
           if gh release view "$tag" >/dev/null 2>&1; then
             gh release upload "$tag" packages/*.deb --clobber
             gh release edit "$tag" --title "$title" --notes "$notes"

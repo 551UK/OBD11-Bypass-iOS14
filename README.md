@@ -1,7 +1,5 @@
 # OBD11 VAG Bypass iOS 14
 
-Rootful iOS 14 build focused only on OBD11 VAG.
+Rootful iOS 14 compatibility tweak for **OBD11 VAG 1.9.28** (build **1704712364**).
 
-Version 1.0.1 is a minimal compatibility build: it injects only into OBD11 VAG and uses the direct NSBundle build/version read needed by VAG's update check. The broader CoreFoundation and NSURLSession hooks from the first iOS 14 build were removed to avoid the instant startup crash.
-
-This build is specifically for testing the VAG startup crash before adding any wider hooks back.
+Made specifically for this older VAG version. It checks the exact version/build before making any change.
