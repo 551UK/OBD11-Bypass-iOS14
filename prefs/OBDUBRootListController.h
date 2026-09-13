@@ -5,8 +5,7 @@
 @interface OBDUBRootListController : PSListController
 - (id)readPreferenceValue:(PSSpecifier *)specifier;
 - (void)setPreferenceValue:(id)value specifier:(PSSpecifier *)specifier;
-- (void)resetWorkingDefaults;
-- (void)resetVAGDefaults;
+- (void)resetSpoofDefaults;
 - (void)respring;
 - (void)openGitHub;
 @end
