@@ -5,7 +5,7 @@
 #include <stdint.h>
 #include <string.h>
 
-extern void OBDInstallLoginDiagnostics(void);
+extern void OBDInstallLoginCompatibility(void);
 
 static NSString *const kTargetBundle = @"com.voltasit.obdeleven.ios";
 static NSString *const kTargetVersion = @"1.9.28";
@@ -17,11 +17,9 @@ static NSString *const kCurrentParseHost = @"parse.obdeleven.com";
 static NSString *const kRestHost = @"api.obdeleven.com";
 static NSString *const kPreferencesPath = @"/var/mobile/Library/Preferences/com.551.obdelevenupdatebypass.plist";
 
-// OBDeleven VAG 1.9.28: final result of UpdateUtility.isForceUpdateNeeded(completion:).
-// Preferred image address 0x100367F04 -> image-relative offset 0x00367F04.
 static const uintptr_t kUpdateResultOffset = 0x00367F04;
-static const uint8_t kExpectedInstruction[4] = {0xE0, 0xA7, 0x9F, 0x1A}; // cset w0, lt
-static const uint8_t kNoUpdateInstruction[4] = {0x00, 0x00, 0x80, 0x52}; // mov w0, #0
+static const uint8_t kExpectedInstruction[4] = {0xE0, 0xA7, 0x9F, 0x1A};
+static const uint8_t kNoUpdateInstruction[4] = {0x00, 0x00, 0x80, 0x52};
 
 static BOOL tweakEnabled(void) {
     NSDictionary *prefs = [NSDictionary dictionaryWithContentsOfFile:kPreferencesPath];
@@ -34,18 +32,14 @@ static BOOL isLegacyParseHost(NSString *host) {
 }
 
 static BOOL isParseHost(NSString *host) {
-    return isLegacyParseHost(host) || [host caseInsensitiveCompare:kCurrentParseHost] == NSOrderedSame;
+    return isLegacyParseHost(host) ||
+           [host caseInsensitiveCompare:kCurrentParseHost] == NSOrderedSame;
 }
 
 static BOOL isRestHost(NSString *host) {
     return [host caseInsensitiveCompare:kRestHost] == NSOrderedSame;
 }
 
-#pragma mark - Parse config migration
-
-// Static comparison of the supplied 1.9.28 and 1.9.73 IPAs shows that
-// PARSE_API_URL moved from server1.obdeleven.com to parse.obdeleven.com.
-// Return the current official host to app code that reads Info.plist at runtime.
 static id (*originalBundleObjectForInfoKey)(NSBundle *, SEL, NSString *);
 static id spoofedBundleObjectForInfoKey(NSBundle *self, SEL cmd, NSString *key) {
     if (self == [NSBundle mainBundle] && [key isEqualToString:@"PARSE_API_URL"])
@@ -63,41 +57,34 @@ static NSDictionary *spoofedBundleInfoDictionary(NSBundle *self, SEL cmd) {
 }
 
 static void installParseConfigSpoof(void) {
-    Class bundleClass = [NSBundle class];
-    MSHookMessageEx(bundleClass,
+    Class cls = [NSBundle class];
+    MSHookMessageEx(cls,
                     @selector(objectForInfoDictionaryKey:),
                     (IMP)spoofedBundleObjectForInfoKey,
                     (IMP *)&originalBundleObjectForInfoKey);
-    MSHookMessageEx(bundleClass,
+    MSHookMessageEx(cls,
                     @selector(infoDictionary),
                     (IMP)spoofedBundleInfoDictionary,
                     (IMP *)&originalBundleInfoDictionary);
 }
 
-#pragma mark - Request migration / version headers
-
 NSURLRequest *OBDRequestBySpoofingServerIdentity(NSURLRequest *request) {
     if (!request) return request;
 
-    NSString *originalHost = request.URL.host ?: @"";
-    BOOL parseHost = isParseHost(originalHost);
-    BOOL restHost = isRestHost(originalHost);
+    NSString *host = request.URL.host ?: @"";
+    BOOL parseHost = isParseHost(host);
+    BOOL restHost = isRestHost(host);
     if (!parseHost && !restHost) return request;
 
     NSMutableURLRequest *mutable = [request mutableCopy];
 
-    // Old VAG hard-codes the retired Parse hostname. Move requests to the same
-    // Parse hostname shipped by VAG 1.9.73 while preserving path/query/method/body.
-    if (isLegacyParseHost(originalHost)) {
+    if (isLegacyParseHost(host)) {
         NSURLComponents *components = [NSURLComponents componentsWithURL:mutable.URL
                                                   resolvingAgainstBaseURL:NO];
         components.host = kCurrentParseHost;
-        NSURL *migratedURL = components.URL;
-        if (migratedURL) mutable.URL = migratedURL;
+        if (components.URL) mutable.URL = components.URL;
     }
 
-    // RestApi.ParseAuthClient and the REST API identify the mobile client with
-    // these headers. Apply them on both Parse hosts and api.obdeleven.com.
     [mutable setValue:kServerVersion forHTTPHeaderField:@"x-mobile-app-version"];
     [mutable setValue:kServerBuild forHTTPHeaderField:@"x-mobile-app-build"];
 
@@ -107,7 +94,7 @@ NSURLRequest *OBDRequestBySpoofingServerIdentity(NSURLRequest *request) {
     }
 
     NSString *userAgent = [mutable valueForHTTPHeaderField:@"User-Agent"];
-    if (userAgent.length > 0) {
+    if (userAgent.length) {
         NSString *spoofed = [userAgent stringByReplacingOccurrencesOfString:kTargetVersion
                                                                  withString:kServerVersion];
         spoofed = [spoofed stringByReplacingOccurrencesOfString:kTargetBuild
@@ -119,16 +106,14 @@ NSURLRequest *OBDRequestBySpoofingServerIdentity(NSURLRequest *request) {
 }
 
 typedef NSURLSessionDataTask *(*DataTaskRequestCompletionIMP)(
-    NSURLSession *, SEL, NSURLRequest *,
-    void (^)(NSData *, NSURLResponse *, NSError *));
+    NSURLSession *, SEL, NSURLRequest *, void (^)(NSData *, NSURLResponse *, NSError *));
 typedef NSURLSessionDataTask *(*DataTaskRequestIMP)(NSURLSession *, SEL, NSURLRequest *);
 typedef NSURLSessionUploadTask *(*UploadTaskDataCompletionIMP)(
-    NSURLSession *, SEL, NSURLRequest *, NSData *,
-    void (^)(NSData *, NSURLResponse *, NSError *));
+    NSURLSession *, SEL, NSURLRequest *, NSData *, void (^)(NSData *, NSURLResponse *, NSError *));
 
-static DataTaskRequestCompletionIMP originalDataTaskRequestCompletion = NULL;
-static DataTaskRequestIMP originalDataTaskRequest = NULL;
-static UploadTaskDataCompletionIMP originalUploadTaskDataCompletion = NULL;
+static DataTaskRequestCompletionIMP originalDataTaskRequestCompletion;
+static DataTaskRequestIMP originalDataTaskRequest;
+static UploadTaskDataCompletionIMP originalUploadTaskDataCompletion;
 
 static NSURLSessionDataTask *spoofedDataTaskRequestCompletion(
     NSURLSession *self, SEL cmd, NSURLRequest *request,
@@ -149,11 +134,9 @@ static NSURLSessionUploadTask *spoofedUploadTaskDataCompletion(
         self, cmd, OBDRequestBySpoofingServerIdentity(request), bodyData, completion);
 }
 
-// Alamofire on iOS 14 creates tasks on NSURLSession's concrete class. Hooking
-// NSURLSession itself is retained, but these hooks cover that class-cluster path.
-static DataTaskRequestCompletionIMP originalConcreteDataTaskRequestCompletion = NULL;
-static DataTaskRequestIMP originalConcreteDataTaskRequest = NULL;
-static UploadTaskDataCompletionIMP originalConcreteUploadTaskDataCompletion = NULL;
+static DataTaskRequestCompletionIMP originalConcreteDataTaskRequestCompletion;
+static DataTaskRequestIMP originalConcreteDataTaskRequest;
+static UploadTaskDataCompletionIMP originalConcreteUploadTaskDataCompletion;
 
 static NSURLSessionDataTask *spoofedConcreteDataTaskRequestCompletion(
     NSURLSession *self, SEL cmd, NSURLRequest *request,
@@ -198,6 +181,7 @@ static void installNetworkSpoofs(void) {
     NSURLSession *probe = [NSURLSession sessionWithConfiguration:
                            [NSURLSessionConfiguration ephemeralSessionConfiguration]];
     Class concreteClass = [probe class];
+
     if (concreteClass && concreteClass != sessionClass) {
         if (classHasSelector(concreteClass, @selector(dataTaskWithRequest:completionHandler:))) {
             MSHookMessageEx(concreteClass,
@@ -217,8 +201,8 @@ static void installNetworkSpoofs(void) {
                             (IMP)spoofedConcreteUploadTaskDataCompletion,
                             (IMP *)&originalConcreteUploadTaskDataCompletion);
         }
-        NSLog(@"[OBD11VAG-iOS14] Concrete NSURLSession hook class: %@", NSStringFromClass(concreteClass));
     }
+
     [probe invalidateAndCancel];
 }
 
@@ -229,29 +213,19 @@ static void Init(void) {
         if (![[bundle bundleIdentifier] isEqualToString:kTargetBundle]) return;
         if (!tweakEnabled()) return;
 
-        // Read the real bundle version before installing any bundle hooks.
         NSString *version = [bundle objectForInfoDictionaryKey:@"CFBundleShortVersionString"];
         NSString *build = [bundle objectForInfoDictionaryKey:@"CFBundleVersion"];
-        if (![version isEqualToString:kTargetVersion] || ![build isEqualToString:kTargetBuild]) {
-            NSLog(@"[OBD11VAG-iOS14] Unsupported VAG build %@ (%@); no patch applied", version, build);
-            return;
-        }
+        if (![version isEqualToString:kTargetVersion] || ![build isEqualToString:kTargetBuild]) return;
 
         const struct mach_header *header = _dyld_get_image_header(0);
         if (!header) return;
 
         uint8_t *target = (uint8_t *)header + kUpdateResultOffset;
-        if (memcmp(target, kExpectedInstruction, sizeof(kExpectedInstruction)) != 0) {
-            NSLog(@"[OBD11VAG-iOS14] 1.9.28 force-update bytes did not match; no patch applied");
-            return;
-        }
+        if (memcmp(target, kExpectedInstruction, sizeof(kExpectedInstruction)) != 0) return;
 
         MSHookMemory(target, kNoUpdateInstruction, sizeof(kNoUpdateInstruction));
         installParseConfigSpoof();
         installNetworkSpoofs();
-        OBDInstallLoginDiagnostics();
-
-        NSLog(@"[OBD11VAG-iOS14] 1.9.28 patched; Parse %@ -> %@; identity %@ (%@)",
-              kLegacyParseHost, kCurrentParseHost, kServerVersion, kServerBuild);
+        OBDInstallLoginCompatibility();
     }
 }
