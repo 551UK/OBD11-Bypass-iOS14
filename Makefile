@@ -1,4 +1,4 @@
-ARCHS = arm64 arm64e
+ARCHS = arm64
 TARGET = iphone:clang:16.5:14.0
 
 include $(THEOS)/makefiles/common.mk
@@ -6,7 +6,7 @@ include $(THEOS)/makefiles/common.mk
 TWEAK_NAME = OBDelevenUpdateBypass
 OBDelevenUpdateBypass_FILES = Tweak.m
 OBDelevenUpdateBypass_CFLAGS = -fvisibility=hidden -fobjc-arc
-OBDelevenUpdateBypass_FRAMEWORKS = Foundation CoreFoundation
+OBDelevenUpdateBypass_FRAMEWORKS = Foundation
 
 include $(THEOS_MAKE_PATH)/tweak.mk
 

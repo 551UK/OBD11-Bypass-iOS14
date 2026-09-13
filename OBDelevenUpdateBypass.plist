@@ -6,7 +6,6 @@
 	<dict>
 		<key>Bundles</key>
 		<array>
-			<string>com.voltasit.obdeleven.ios.basic</string>
 			<string>com.voltasit.obdeleven.ios</string>
 		</array>
 	</dict>

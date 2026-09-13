@@ -9,7 +9,7 @@
 		<key>detail</key><string>OBDUBRootListController</string>
 		<key>icon</key><string>icon.png</string>
 		<key>isController</key><true/>
-		<key>label</key><string>OBD11 Bypass iOS 14</string>
+		<key>label</key><string>OBD11 VAG Bypass iOS 14</string>
 	</dict>
 </dict>
 </plist>

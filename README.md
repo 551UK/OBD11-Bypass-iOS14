@@ -1,10 +1,5 @@
-# OBD11 Bypass iOS 14
+# OBD11 VAG Bypass iOS 14
 
-Rootful iOS 14 version of the OBD11 / OBDeleven update bypass.
+Rootful iOS 14 build focused only on OBD11 VAG.
 
-- Supports regular OBD11 and OBD11 VAG.
-- Spoofs the app version/build and version request headers.
-- Separate enable/version controls for each app in Settings.
-- Rootful package for iOS 14.
-
-Built from the working iOS 16 bypass logic, with rootful paths and packaging.
+Version 1.0.1 is a minimal compatibility build: it injects only into OBD11 VAG and uses the direct NSBundle build/version read needed by VAG's update check. The broader CoreFoundation and NSURLSession hooks from the first iOS 14 build were removed to avoid the instant startup crash.
