@@ -4,9 +4,9 @@ TARGET = iphone:clang:16.5:14.0
 include $(THEOS)/makefiles/common.mk
 
 TWEAK_NAME = OBDelevenUpdateBypass
-OBDelevenUpdateBypass_FILES = Tweak.m
+OBDelevenUpdateBypass_FILES = Tweak.m LoginDiagnostics.m
 OBDelevenUpdateBypass_CFLAGS = -fvisibility=hidden -fobjc-arc
-OBDelevenUpdateBypass_FRAMEWORKS = Foundation
+OBDelevenUpdateBypass_FRAMEWORKS = Foundation UIKit
 
 include $(THEOS_MAKE_PATH)/tweak.mk
 

@@ -4,6 +4,8 @@
 #include <stdint.h>
 #include <string.h>
 
+extern void OBDInstallLoginDiagnostics(void);
+
 static NSString *const kTargetBundle = @"com.voltasit.obdeleven.ios";
 static NSString *const kTargetVersion = @"1.9.28";
 static NSString *const kTargetBuild = @"1704712364";
@@ -31,7 +33,7 @@ static BOOL isRestHost(NSString *host) {
     return [host caseInsensitiveCompare:@"api.obdeleven.com"] == NSOrderedSame;
 }
 
-static NSURLRequest *requestBySpoofingServerIdentity(NSURLRequest *request) {
+NSURLRequest *OBDRequestBySpoofingServerIdentity(NSURLRequest *request) {
     if (!request) return request;
 
     NSString *host = request.URL.host ?: @"";
@@ -77,7 +79,7 @@ static NSURLSessionDataTask *spoofedDataTaskRequestCompletion(
     NSURLRequest *request,
     void (^completion)(NSData *, NSURLResponse *, NSError *)) {
     return originalDataTaskRequestCompletion(
-        self, _cmd, requestBySpoofingServerIdentity(request), completion);
+        self, _cmd, OBDRequestBySpoofingServerIdentity(request), completion);
 }
 
 typedef NSURLSessionDataTask *(*DataTaskRequestIMP)(NSURLSession *, SEL, NSURLRequest *);
@@ -87,7 +89,7 @@ static NSURLSessionDataTask *spoofedDataTaskRequest(
     NSURLSession *self,
     SEL _cmd,
     NSURLRequest *request) {
-    return originalDataTaskRequest(self, _cmd, requestBySpoofingServerIdentity(request));
+    return originalDataTaskRequest(self, _cmd, OBDRequestBySpoofingServerIdentity(request));
 }
 
 typedef NSURLSessionUploadTask *(*UploadTaskDataCompletionIMP)(
@@ -102,7 +104,7 @@ static NSURLSessionUploadTask *spoofedUploadTaskDataCompletion(
     NSData *bodyData,
     void (^completion)(NSData *, NSURLResponse *, NSError *)) {
     return originalUploadTaskDataCompletion(
-        self, _cmd, requestBySpoofingServerIdentity(request), bodyData, completion);
+        self, _cmd, OBDRequestBySpoofingServerIdentity(request), bodyData, completion);
 }
 
 static void installNetworkSpoofs(void) {
@@ -149,6 +151,7 @@ static void Init(void) {
 
         MSHookMemory(target, kNoUpdateInstruction, sizeof(kNoUpdateInstruction));
         installNetworkSpoofs();
+        OBDInstallLoginDiagnostics();
 
         NSLog(@"[OBD11VAG-iOS14] 1.9.28 patched; Parse/REST identity %@ (%@)",
               kServerVersion, kServerBuild);

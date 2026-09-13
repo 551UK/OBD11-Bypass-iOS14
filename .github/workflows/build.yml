@@ -58,7 +58,7 @@ jobs:
           deb="${debs[0]}"
           test "$(dpkg-deb -f "$deb" Architecture)" = "iphoneos-arm"
           test "$(dpkg-deb -f "$deb" Package)" = "com.551.obdelevenupdatebypass"
-          test "$(dpkg-deb -f "$deb" Version)" = "1.0.5"
+          test "$(dpkg-deb -f "$deb" Version)" = "1.0.6"
           dpkg-deb -x "$deb" "$RUNNER_TEMP/obd11-check"
           root="$RUNNER_TEMP/obd11-check"
           dylib="$root/Library/MobileSubstrate/DynamicLibraries/OBDelevenUpdateBypass.dylib"
@@ -104,7 +104,7 @@ jobs:
           version="$(sed -n 's/^Version: //p' control)"
           tag="v${version}"
           title="OBD11 VAG Bypass iOS 14 ${version}"
-          notes="Login-focused build for OBD11 VAG 1.9.28 on rootful iOS 14. Keeps the verified force-update patch, spoofs Parse login headers X-Parse-App-Display-Version/X-Parse-App-Build-Version, and spoofs REST x-mobile-app-version/x-mobile-app-build as VAG 1.9.73 build 1785335496. Header rewriting is limited to server1.obdeleven.com and api.obdeleven.com."
+          notes="Diagnostic build for VAG 1.9.28 on rootful iOS 14. Keeps the update bypass and applies version headers directly to Parse requests. If login fails, the popup now shows connection/server error codes. Close and reopen VAG, try login, and send a screenshot. Login fix is not yet confirmed. No credentials or tokens are logged."
           if gh release view "$tag" >/dev/null 2>&1; then
             gh release upload "$tag" packages/*.deb --clobber
             gh release edit "$tag" --title "$title" --notes "$notes"
