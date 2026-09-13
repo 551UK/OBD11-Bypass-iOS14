@@ -1,0 +1,1 @@
+VAG-only diagnostic build with no method hooks. Used to check whether loading the tweak itself is stable on rootful iOS 14.
