@@ -18,8 +18,7 @@ static id CopyPreferenceValue(NSString *key) {
     CFPropertyListRef raw = CFPreferencesCopyAppValue(
         (__bridge CFStringRef)key,
         (__bridge CFStringRef)kPreferencesDomain);
-    if (!raw) return nil;
-    return CFBridgingRelease(raw);
+    return raw ? CFBridgingRelease(raw) : nil;
 }
 
 static void SetPreferenceValue(NSString *key, id value) {
@@ -66,28 +65,20 @@ static BOOL SpawnCommand(const char *path, char *const argv[]) {
     [self postPreferencesChangedNotification];
 }
 
-- (void)resetAppVersion:(BOOL)isVAG {
+- (void)resetSpoofDefaults {
     [self.view endEditing:YES];
-    SetPreferenceValue(isVAG ? @"vagEnabled" : @"enabled", @YES);
-    SetPreferenceValue(isVAG ? @"vagSpoofedVersion" : @"spoofedVersion",
-                       isVAG ? @"1.9.99" : @"2.10.0");
+    SetPreferenceValue(@"vagEnabled", @YES);
+    SetPreferenceValue(@"vagSpoofedVersion", @"1.9.73");
+    SetPreferenceValue(@"vagSpoofedBuild", @"1785335496");
     [self postPreferencesChangedNotification];
     [self reloadSpecifiers];
 
     UIAlertController *alert =
-        [UIAlertController alertControllerWithTitle:@"Version Reset"
-                                            message:isVAG ? @"Close and reopen OBD11 VAG." : @"Close and reopen OBD11."
+        [UIAlertController alertControllerWithTitle:@"Defaults Restored"
+                                            message:@"Close and reopen OBD11 VAG."
                                      preferredStyle:UIAlertControllerStyleAlert];
     [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
     [self presentViewController:alert animated:YES completion:nil];
-}
-
-- (void)resetWorkingDefaults {
-    [self resetAppVersion:NO];
-}
-
-- (void)resetVAGDefaults {
-    [self resetAppVersion:YES];
 }
 
 - (void)respring {
