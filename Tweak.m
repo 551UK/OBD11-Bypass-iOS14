@@ -9,10 +9,10 @@ static NSString *const kTargetVersion = @"1.9.28";
 static NSString *const kTargetBuild = @"1704712364";
 static NSString *const kPreferencesPath = @"/var/mobile/Library/Preferences/com.551.obdelevenupdatebypass.plist";
 
-// OBDeleven VAG 1.9.28: final boolean returned by AppVersionUtility.isAppUpdateAvailable().
-// Preferred image address 0x1003D0A1C -> image-relative offset 0x003D0A1C.
-static const uintptr_t kUpdateResultOffset = 0x003D0A1C;
-static const uint8_t kExpectedInstruction[4] = {0x80, 0x02, 0x00, 0x12}; // and w0, w20, #1
+// OBDeleven VAG 1.9.28: final result of UpdateUtility.isForceUpdateNeeded(completion:).
+// Preferred image address 0x100367F04 -> image-relative offset 0x00367F04.
+static const uintptr_t kUpdateResultOffset = 0x00367F04;
+static const uint8_t kExpectedInstruction[4] = {0xE0, 0xA7, 0x9F, 0x1A}; // cset w0, lt
 static const uint8_t kNoUpdateInstruction[4] = {0x00, 0x00, 0x80, 0x52}; // mov w0, #0
 
 static BOOL tweakEnabled(void) {
@@ -40,11 +40,11 @@ static void Init(void) {
 
         uint8_t *target = (uint8_t *)header + kUpdateResultOffset;
         if (memcmp(target, kExpectedInstruction, sizeof(kExpectedInstruction)) != 0) {
-            NSLog(@"[OBD11VAG-iOS14] 1.9.28 patch bytes did not match; no patch applied");
+            NSLog(@"[OBD11VAG-iOS14] 1.9.28 force-update bytes did not match; no patch applied");
             return;
         }
 
         MSHookMemory(target, kNoUpdateInstruction, sizeof(kNoUpdateInstruction));
-        NSLog(@"[OBD11VAG-iOS14] 1.9.28 update check patched");
+        NSLog(@"[OBD11VAG-iOS14] 1.9.28 force-update check patched");
     }
 }
