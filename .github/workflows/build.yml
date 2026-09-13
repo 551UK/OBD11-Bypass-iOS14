@@ -110,7 +110,7 @@ jobs:
           notes="VAG 1.9.28 rootful iOS 14 login compatibility build. Adds x-mobile-app-version/x-mobile-app-build to the server1 RestApi password-check path, hooks the concrete NSURLSession path used by Alamofire, and traces the RestApi/Parse auth response if login still fails. No credentials, response text, session tokens or temporary passwords are logged."
           if gh release view "$tag" >/dev/null 2>&1; then
             gh release upload "$tag" packages/*.deb --clobber
-            gh release edit "$tag" --title "$title" --notes "$notes"
+            gh release edit "$tag" --title "$title" --notes "$notes" --draft=false
           else
             gh release create "$tag" packages/*.deb --target "$GITHUB_SHA" --title "$title" --notes "$notes"
           fi
