@@ -2,4 +2,4 @@
 
 For **VAG 1.9.28** on **rootful iOS 14**.
 
-**1.0.7** keeps the force-update bypass, sends the VAG 1.9.73 version/build headers through both the Parse and RestApi login paths, and traces the Alamofire password check if login still fails. No credentials or tokens are logged.
+**1.0.8** keeps the force-update bypass and migrates the old app from `server1.obdeleven.com` to the current VAG Parse host `parse.obdeleven.com`. It also keeps the VAG 1.9.73 version/build headers and login diagnostics. No credentials or tokens are logged.

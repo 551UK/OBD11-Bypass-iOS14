@@ -5,26 +5,39 @@
 
 extern NSURLRequest *OBDRequestBySpoofingServerIdentity(NSURLRequest *request);
 
-// Diagnostics intentionally keep only fixed labels and numeric error/status
-// codes. URLs, query strings, credentials, response text, userInfo and tokens
-// are never displayed or persisted.
+// Diagnostics intentionally retain only fixed labels and numeric status/error
+// codes. URLs, credentials, response text, NSError.userInfo and tokens are not
+// displayed or persisted.
 static NSObject *gLock;
 static NSMutableDictionary *gDetails;
 static NSUInteger gAttempt;
 static BOOL gAlamofireHooksInstalled;
 static const char kAttemptKey, kResponseKey;
 
+static BOOL isKnownParseHost(NSString *host) {
+    return [host isEqualToString:@"server1.obdeleven.com"] ||
+           [host isEqualToString:@"parse.obdeleven.com"];
+}
+
 static NSString *authRoute(NSURLRequest *request) {
     if (!request) return nil;
     NSString *host = request.URL.host.lowercaseString ?: @"";
     NSString *last = request.URL.lastPathComponent.lowercaseString ?: @"";
-    if ([host isEqualToString:@"server1.obdeleven.com"]) {
+    if (isKnownParseHost(host)) {
         if ([last isEqualToString:@"temporary-password"]) return @"RestApi password check";
         if ([last isEqualToString:@"login"]) return @"Parse login";
     }
     if ([host isEqualToString:@"api.obdeleven.com"] && [last isEqualToString:@"login"])
         return @"REST login";
     return nil;
+}
+
+static NSString *safeHostState(NSURLRequest *request) {
+    NSString *host = request.URL.host.lowercaseString ?: @"";
+    if ([host isEqualToString:@"parse.obdeleven.com"]) return @"current Parse host";
+    if ([host isEqualToString:@"server1.obdeleven.com"]) return @"legacy Parse host";
+    if ([host isEqualToString:@"api.obdeleven.com"]) return @"REST API host";
+    return @"other host";
 }
 
 static NSNumber *beginAuthRequest(NSURLRequest *request, NSString *transport) {
@@ -35,7 +48,7 @@ static NSNumber *beginAuthRequest(NSURLRequest *request, NSString *transport) {
     BOOL mobileHeaders = [[request valueForHTTPHeaderField:@"x-mobile-app-version"] isEqualToString:@"1.9.73"] &&
         [[request valueForHTTPHeaderField:@"x-mobile-app-build"] isEqualToString:@"1785335496"];
     BOOL parseHeaders = YES;
-    if ([host isEqualToString:@"server1.obdeleven.com"]) {
+    if (isKnownParseHost(host)) {
         parseHeaders = [[request valueForHTTPHeaderField:@"X-Parse-App-Display-Version"] isEqualToString:@"1.9.73"] &&
             [[request valueForHTTPHeaderField:@"X-Parse-App-Build-Version"] isEqualToString:@"1785335496"];
     }
@@ -47,6 +60,7 @@ static NSNumber *beginAuthRequest(NSURLRequest *request, NSString *transport) {
         gDetails = [@{
             @"time": @([NSDate timeIntervalSinceReferenceDate]),
             @"route": route,
+            @"host": safeHostState(request),
             @"transport": transport ?: @"URLSession",
             @"mobile": mobileHeaders ? @"1.9.73 / 1785335496" : @"not matched",
             @"parse": parseHeaders ? @"1.9.73 / 1785335496" : @"not matched"
@@ -109,8 +123,8 @@ static void collectErrorData(NSURLSessionTask *task, NSData *data, NSString *tra
     NSInteger status = [task.response isKindOfClass:[NSHTTPURLResponse class]] ?
         [(NSHTTPURLResponse *)task.response statusCode] : 0;
 
-    // A successful auth response can contain a session token or temporary
-    // password, so only retain a small body when the server returned an error.
+    // Successful auth bodies can contain sensitive values. Retain only a small
+    // error body so numeric Parse codes / fixed-word hints can be derived.
     if (status < 400 || !data.length) return;
 
     NSMutableData *buffer = objc_getAssociatedObject(task, &kResponseKey);
@@ -127,13 +141,14 @@ static NSString *diagnosticSummary(void) {
     NSDictionary *d;
     @synchronized (gLock) { d = [gDetails copy]; }
     if (!d || [NSDate timeIntervalSinceReferenceDate] - [d[@"time"] doubleValue] > 120) {
-        return [NSString stringWithFormat:@"[VAG 1.0.7]\nNo recent auth request observed.\nAlamofire hooks: %@",
+        return [NSString stringWithFormat:@"[VAG 1.0.8]\nNo recent auth request observed.\nAlamofire hooks: %@",
                 gAlamofireHooksInstalled ? @"active" : @"not found"];
     }
 
     NSMutableArray *lines = [NSMutableArray arrayWithObjects:
-        @"[VAG 1.0.7]",
+        @"[VAG 1.0.8]",
         d[@"route"] ?: @"Auth request",
+        [@"Host: " stringByAppendingString:(d[@"host"] ?: @"unknown")],
         [@"Transport: " stringByAppendingString:(d[@"transport"] ?: @"URLSession")],
         [@"Mobile headers: " stringByAppendingString:(d[@"mobile"] ?: @"unknown")],
         [@"Parse headers: " stringByAppendingString:(d[@"parse"] ?: @"unknown")], nil];
@@ -196,7 +211,7 @@ static void afComplete(id self, SEL cmd, NSURLSession *session, NSURLSessionTask
 #pragma mark - Failed-login popup
 
 static NSString *messageWithDiagnostics(NSString *message) {
-    if (![message isKindOfClass:[NSString class]] || [message containsString:@"[VAG 1.0.7]"] ||
+    if (![message isKindOfClass:[NSString class]] || [message containsString:@"[VAG 1.0.8]"] ||
         [message rangeOfString:@"Failed to login" options:NSCaseInsensitiveSearch].location == NSNotFound)
         return message;
     return [message stringByAppendingFormat:@"\n\n%@", diagnosticSummary()];
