@@ -65,20 +65,33 @@ static BOOL SpawnCommand(const char *path, char *const argv[]) {
     [self postPreferencesChangedNotification];
 }
 
-- (void)resetSpoofDefaults {
+- (void)showDefaultsRestoredMessage:(NSString *)message {
+    UIAlertController *alert =
+        [UIAlertController alertControllerWithTitle:@"Defaults Restored"
+                                            message:message
+                                     preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
+}
+
+- (void)resetOBDDefaults {
+    [self.view endEditing:YES];
+    SetPreferenceValue(@"enabled", @YES);
+    SetPreferenceValue(@"spoofedVersion", @"2.11.0");
+    SetPreferenceValue(@"spoofedBuild", @"2147483647");
+    [self postPreferencesChangedNotification];
+    [self reloadSpecifiers];
+    [self showDefaultsRestoredMessage:@"Close and reopen OBDeleven."];
+}
+
+- (void)resetVAGDefaults {
     [self.view endEditing:YES];
     SetPreferenceValue(@"vagEnabled", @YES);
     SetPreferenceValue(@"vagSpoofedVersion", @"1.9.73");
     SetPreferenceValue(@"vagSpoofedBuild", @"1785335496");
     [self postPreferencesChangedNotification];
     [self reloadSpecifiers];
-
-    UIAlertController *alert =
-        [UIAlertController alertControllerWithTitle:@"Defaults Restored"
-                                            message:@"Close and reopen OBD11 VAG."
-                                     preferredStyle:UIAlertControllerStyleAlert];
-    [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
-    [self presentViewController:alert animated:YES completion:nil];
+    [self showDefaultsRestoredMessage:@"Close and reopen OBD11 VAG."];
 }
 
 - (void)respring {
