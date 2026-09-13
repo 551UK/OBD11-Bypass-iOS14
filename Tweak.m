@@ -8,25 +8,72 @@
 
 extern void OBDInstallLoginCompatibility(void);
 
-static NSString *const kTargetBundle = @"com.voltasit.obdeleven.ios";
-static NSString *const kTargetVersion = @"1.9.28";
-static NSString *const kTargetBuild = @"1704712364";
-static NSString *const kDefaultSpoofedVersion = @"1.9.73";
-static NSString *const kDefaultSpoofedBuild = @"1785335496";
+typedef NS_ENUM(NSInteger, OBDTargetKind) {
+    OBDTargetNone = 0,
+    OBDTargetVAG,
+    OBDTargetMain
+};
+
+static NSString *const kVAGBundle = @"com.voltasit.obdeleven.ios";
+static NSString *const kVAGTargetVersion = @"1.9.28";
+static NSString *const kVAGTargetBuild = @"1704712364";
+static NSString *const kVAGDefaultSpoofedVersion = @"1.9.73";
+static NSString *const kVAGDefaultSpoofedBuild = @"1785335496";
+
+static NSString *const kMainBundle = @"com.voltasit.obdeleven.ios.basic";
+static NSString *const kMainTargetVersion = @"1.2.1";
+static NSString *const kMainTargetBuild = @"12103";
+static NSString *const kMainDefaultSpoofedVersion = @"2.11.0";
+static NSString *const kMainDefaultSpoofedBuild = @"2147483647";
+
 static NSString *const kLegacyParseHost = @"server1.obdeleven.com";
 static NSString *const kCurrentParseHost = @"parse.obdeleven.com";
 static NSString *const kRestHost = @"api.obdeleven.com";
 static NSString *const kPreferencesPath = @"/var/mobile/Library/Preferences/com.551.obdelevenupdatebypass.plist";
 static CFStringRef const kPreferencesChangedNotification = CFSTR("com.551.obdelevenupdatebypass/preferences.changed");
 
-static const uintptr_t kUpdateResultOffset = 0x00367F04;
-static const uint8_t kExpectedInstruction[4] = {0xE0, 0xA7, 0x9F, 0x1A};
-static const uint8_t kNoUpdateInstruction[4] = {0x00, 0x00, 0x80, 0x52};
+// Exact VAG 1.9.28 force-update result patch. The main/BMW 1.2.1 app uses
+// its bundle/app version for the update decision, so its update bypass is the
+// bundle identity spoof below rather than a hard-coded binary patch.
+static const uintptr_t kVAGUpdateResultOffset = 0x00367F04;
+static const uint8_t kVAGExpectedInstruction[4] = {0xE0, 0xA7, 0x9F, 0x1A};
+static const uint8_t kVAGNoUpdateInstruction[4] = {0x00, 0x00, 0x80, 0x52};
 
+static OBDTargetKind gTarget = OBDTargetNone;
 static BOOL gEnabled = YES;
 static NSString *gSpoofedVersion;
 static NSString *gSpoofedBuild;
-static NSBundle *gMainBundle;
+static NSString *gRealVersion;
+static NSString *gRealBuild;
+static NSBundle *gMainBundleObject;
+
+static NSString *targetVersion(void) {
+    return gTarget == OBDTargetVAG ? kVAGTargetVersion : kMainTargetVersion;
+}
+
+static NSString *targetBuild(void) {
+    return gTarget == OBDTargetVAG ? kVAGTargetBuild : kMainTargetBuild;
+}
+
+static NSString *defaultSpoofedVersion(void) {
+    return gTarget == OBDTargetVAG ? kVAGDefaultSpoofedVersion : kMainDefaultSpoofedVersion;
+}
+
+static NSString *defaultSpoofedBuild(void) {
+    return gTarget == OBDTargetVAG ? kVAGDefaultSpoofedBuild : kMainDefaultSpoofedBuild;
+}
+
+static NSString *enabledPreferenceKey(void) {
+    return gTarget == OBDTargetVAG ? @"vagEnabled" : @"enabled";
+}
+
+static NSString *versionPreferenceKey(void) {
+    return gTarget == OBDTargetVAG ? @"vagSpoofedVersion" : @"spoofedVersion";
+}
+
+static NSString *buildPreferenceKey(void) {
+    return gTarget == OBDTargetVAG ? @"vagSpoofedBuild" : @"spoofedBuild";
+}
 
 static BOOL validValue(NSString *value, BOOL allowDots) {
     if (![value isKindOfClass:[NSString class]] || value.length == 0 || value.length > 64) return NO;
@@ -38,14 +85,14 @@ static BOOL validValue(NSString *value, BOOL allowDots) {
 
 static void loadPreferences(void) {
     NSDictionary *prefs = [NSDictionary dictionaryWithContentsOfFile:kPreferencesPath] ?: @{};
-    id enabled = prefs[@"vagEnabled"];
-    NSString *version = prefs[@"vagSpoofedVersion"];
-    NSString *build = prefs[@"vagSpoofedBuild"];
+    id enabled = prefs[enabledPreferenceKey()];
+    NSString *version = prefs[versionPreferenceKey()];
+    NSString *build = prefs[buildPreferenceKey()];
 
     @synchronized ([NSBundle class]) {
         gEnabled = enabled ? [enabled boolValue] : YES;
-        gSpoofedVersion = validValue(version, YES) ? [version copy] : kDefaultSpoofedVersion;
-        gSpoofedBuild = validValue(build, NO) ? [build copy] : kDefaultSpoofedBuild;
+        gSpoofedVersion = validValue(version, YES) ? [version copy] : defaultSpoofedVersion();
+        gSpoofedBuild = validValue(build, NO) ? [build copy] : defaultSpoofedBuild();
     }
 }
 
@@ -56,11 +103,11 @@ static void preferencesChanged(CFNotificationCenterRef center, void *observer,
 }
 
 static NSString *spoofedVersion(void) {
-    @synchronized ([NSBundle class]) { return gSpoofedVersion ?: kDefaultSpoofedVersion; }
+    @synchronized ([NSBundle class]) { return gSpoofedVersion ?: defaultSpoofedVersion(); }
 }
 
 static NSString *spoofedBuild(void) {
-    @synchronized ([NSBundle class]) { return gSpoofedBuild ?: kDefaultSpoofedBuild; }
+    @synchronized ([NSBundle class]) { return gSpoofedBuild ?: defaultSpoofedBuild(); }
 }
 
 static BOOL tweakEnabled(void) {
@@ -84,7 +131,7 @@ static BOOL isRestHost(NSString *host) {
 
 static id (*originalBundleObjectForInfoKey)(NSBundle *, SEL, NSString *);
 static id spoofedBundleObjectForInfoKey(NSBundle *self, SEL cmd, NSString *key) {
-    if (self == gMainBundle && tweakEnabled()) {
+    if (self == gMainBundleObject && tweakEnabled()) {
         if ([key isEqualToString:@"CFBundleShortVersionString"]) return spoofedVersion();
         if ([key isEqualToString:@"CFBundleVersion"]) return spoofedBuild();
         if ([key isEqualToString:@"PARSE_API_URL"]) return kCurrentParseHost;
@@ -95,7 +142,7 @@ static id spoofedBundleObjectForInfoKey(NSBundle *self, SEL cmd, NSString *key) 
 static NSDictionary *(*originalBundleInfoDictionary)(NSBundle *, SEL);
 static NSDictionary *spoofedBundleInfoDictionary(NSBundle *self, SEL cmd) {
     NSDictionary *original = originalBundleInfoDictionary(self, cmd);
-    if (self != gMainBundle || !original || !tweakEnabled()) return original;
+    if (self != gMainBundleObject || !original || !tweakEnabled()) return original;
 
     NSMutableDictionary *copy = [original mutableCopy];
     copy[@"CFBundleShortVersionString"] = spoofedVersion();
@@ -132,7 +179,7 @@ static void installBundleSpoofs(void) {
                    (void **)&originalCFBundleGetValueForInfoDictionaryKey);
 }
 
-#pragma mark - Network identity
+#pragma mark - Network identity / Parse migration
 
 NSURLRequest *OBDRequestBySpoofingServerIdentity(NSURLRequest *request) {
     if (!request || !tweakEnabled()) return request;
@@ -163,11 +210,15 @@ NSURLRequest *OBDRequestBySpoofingServerIdentity(NSURLRequest *request) {
 
     NSString *userAgent = [mutable valueForHTTPHeaderField:@"User-Agent"];
     if (userAgent.length) {
-        NSString *spoofed = [userAgent stringByReplacingOccurrencesOfString:kTargetVersion
-                                                                 withString:version];
-        spoofed = [spoofed stringByReplacingOccurrencesOfString:kTargetBuild
-                                                     withString:build];
-        [mutable setValue:spoofed forHTTPHeaderField:@"User-Agent"];
+        if (gRealVersion.length) {
+            userAgent = [userAgent stringByReplacingOccurrencesOfString:gRealVersion
+                                                              withString:version];
+        }
+        if (gRealBuild.length) {
+            userAgent = [userAgent stringByReplacingOccurrencesOfString:gRealBuild
+                                                              withString:build];
+        }
+        [mutable setValue:userAgent forHTTPHeaderField:@"User-Agent"];
     }
 
     return mutable;
@@ -274,29 +325,49 @@ static void installNetworkSpoofs(void) {
     [probe invalidateAndCancel];
 }
 
+static void installVAGForceUpdatePatch(void) {
+    if (gTarget != OBDTargetVAG || !tweakEnabled()) return;
+
+    const struct mach_header *header = _dyld_get_image_header(0);
+    if (!header) return;
+
+    uint8_t *target = (uint8_t *)header + kVAGUpdateResultOffset;
+    if (memcmp(target, kVAGExpectedInstruction, sizeof(kVAGExpectedInstruction)) != 0) {
+        NSLog(@"[OBDelevenUpdateBypass] VAG force-update patch bytes did not match; continuing with identity spoofing");
+        return;
+    }
+
+    MSHookMemory(target, kVAGNoUpdateInstruction, sizeof(kVAGNoUpdateInstruction));
+}
+
 __attribute__((constructor))
 static void Init(void) {
     @autoreleasepool {
-        gMainBundle = [NSBundle mainBundle];
-        if (![[gMainBundle bundleIdentifier] isEqualToString:kTargetBundle]) return;
+        gMainBundleObject = [NSBundle mainBundle];
+        NSString *bundleID = [gMainBundleObject bundleIdentifier];
 
-        NSString *realVersion = [gMainBundle objectForInfoDictionaryKey:@"CFBundleShortVersionString"];
-        NSString *realBuild = [gMainBundle objectForInfoDictionaryKey:@"CFBundleVersion"];
-        if (![realVersion isEqualToString:kTargetVersion] || ![realBuild isEqualToString:kTargetBuild]) return;
+        if ([bundleID isEqualToString:kVAGBundle]) {
+            gTarget = OBDTargetVAG;
+        } else if ([bundleID isEqualToString:kMainBundle]) {
+            gTarget = OBDTargetMain;
+        } else {
+            return;
+        }
+
+        gRealVersion = [[gMainBundleObject objectForInfoDictionaryKey:@"CFBundleShortVersionString"] copy];
+        gRealBuild = [[gMainBundleObject objectForInfoDictionaryKey:@"CFBundleVersion"] copy];
+
+        if (![gRealVersion isEqualToString:targetVersion()] ||
+            ![gRealBuild isEqualToString:targetBuild()]) {
+            NSLog(@"[OBDelevenUpdateBypass] Unsupported %@ build %@ (%@)", bundleID, gRealVersion, gRealBuild);
+            return;
+        }
 
         loadPreferences();
-        if (!tweakEnabled()) return;
-
-        const struct mach_header *header = _dyld_get_image_header(0);
-        if (!header) return;
-
-        uint8_t *target = (uint8_t *)header + kUpdateResultOffset;
-        if (memcmp(target, kExpectedInstruction, sizeof(kExpectedInstruction)) != 0) return;
-
-        MSHookMemory(target, kNoUpdateInstruction, sizeof(kNoUpdateInstruction));
         installBundleSpoofs();
         installNetworkSpoofs();
         OBDInstallLoginCompatibility();
+        installVAGForceUpdatePatch();
 
         CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(),
                                         NULL,
@@ -304,5 +375,14 @@ static void Init(void) {
                                         kPreferencesChangedNotification,
                                         NULL,
                                         CFNotificationSuspensionBehaviorDeliverImmediately);
+
+        NSLog(@"[OBDelevenUpdateBypass] loaded target=%@ real=%@/%@ spoof=%@/%@ enabled=%d parse=%@",
+              gTarget == OBDTargetVAG ? @"VAG" : @"OBDeleven/BMW",
+              gRealVersion,
+              gRealBuild,
+              spoofedVersion(),
+              spoofedBuild(),
+              tweakEnabled(),
+              kCurrentParseHost);
     }
 }
