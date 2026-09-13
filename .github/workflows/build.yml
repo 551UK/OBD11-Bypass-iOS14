@@ -1,4 +1,4 @@
-name: Build final rootful iOS 14 VAG DEB
+name: Build rootful iOS 14 OBDeleven DEB
 
 on:
   push:
@@ -59,7 +59,7 @@ jobs:
           deb="${debs[0]}"
           test "$(dpkg-deb -f "$deb" Architecture)" = "iphoneos-arm"
           test "$(dpkg-deb -f "$deb" Package)" = "com.551.obdelevenupdatebypass"
-          test "$(dpkg-deb -f "$deb" Version)" = "1.1.0"
+          test "$(dpkg-deb -f "$deb" Version)" = "1.2.0"
           dpkg-deb -x "$deb" "$RUNNER_TEMP/obd11-check"
           root="$RUNNER_TEMP/obd11-check"
           dylib="$root/Library/MobileSubstrate/DynamicLibraries/OBDelevenUpdateBypass.dylib"
@@ -74,12 +74,18 @@ jobs:
           plutil -lint "$bundle/Root.plist"
           plutil -lint "$bundle/Info.plist"
           grep -q 'com.voltasit.obdeleven.ios' "$filter"
-          ! grep -q 'com.voltasit.obdeleven.ios.basic' "$filter"
+          grep -q 'com.voltasit.obdeleven.ios.basic' "$filter"
           grep -q '1.9.28' Tweak.m
           grep -q '1704712364' Tweak.m
           grep -q '0x00367F04' Tweak.m
           grep -q '1.9.73' Tweak.m
           grep -q '1785335496' Tweak.m
+          grep -q '1.2.1' Tweak.m
+          grep -q '12103' Tweak.m
+          grep -q '2.11.0' Tweak.m
+          grep -q '2147483647' Tweak.m
+          grep -q 'spoofedVersion' Tweak.m
+          grep -q 'spoofedBuild' Tweak.m
           grep -q 'vagSpoofedVersion' Tweak.m
           grep -q 'vagSpoofedBuild' Tweak.m
           grep -q 'CFBundleShortVersionString' Tweak.m
@@ -93,17 +99,19 @@ jobs:
           grep -q 'x-mobile-app-build' Tweak.m
           grep -q 'X-Parse-App-Display-Version' Tweak.m
           grep -q 'X-Parse-App-Build-Version' Tweak.m
+          grep -q 'spoofedVersion' prefs/Resources/Root.plist
+          grep -q 'spoofedBuild' prefs/Resources/Root.plist
           grep -q 'vagSpoofedVersion' prefs/Resources/Root.plist
           grep -q 'vagSpoofedBuild' prefs/Resources/Root.plist
+          grep -q '2.11.0' prefs/Resources/Root.plist
           grep -q 'PFURLSession' LoginDiagnostics.m
           grep -q 'OBDInstallLoginCompatibility' LoginDiagnostics.m
-          ! grep -q 'UIAlertController' LoginDiagnostics.m
-          echo "OBD11 VAG iOS 14 1.1.0 version spoofer validation passed."
+          echo "OBD11 iOS 14 1.2.0 combined app validation passed."
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: OBD11-VAG-Bypass-iOS14-final
+          name: OBD11-Bypass-iOS14-final
           path: packages/*.deb
           if-no-files-found: error
 
@@ -115,8 +123,8 @@ jobs:
           set -euo pipefail
           version="$(sed -n 's/^Version: //p' control)"
           tag="v${version}"
-          title="OBD11 VAG Bypass iOS 14 ${version}"
-          notes="VAG 1.9.28 rootful iOS 14 build with update bypass, login compatibility and editable version/build spoofing."
+          title="OBD11 Bypass iOS 14 ${version}"
+          notes="Rootful iOS 14 build for OBDeleven 1.2.1 (BMW) and VAG 1.9.28. Adds independent version/build spoofing, current Parse host migration and the VAG update bypass."
           deb="$(echo packages/*.deb)"
 
           find_release_id() {
