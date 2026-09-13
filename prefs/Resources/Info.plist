@@ -3,14 +3,14 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleDevelopmentRegion</key><string>English</string>
-	<key>CFBundleDisplayName</key><string>OBD11 VAG Bypass iOS 14</string>
+	<key>CFBundleDisplayName</key><string>OBD11 Bypass iOS 14</string>
 	<key>CFBundleExecutable</key><string>OBDelevenUpdateBypassPrefs</string>
 	<key>CFBundleIdentifier</key><string>com.551.obdelevenupdatebypassprefs</string>
 	<key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
 	<key>CFBundlePackageType</key><string>BNDL</string>
-	<key>CFBundleShortVersionString</key><string>1.1.0</string>
+	<key>CFBundleShortVersionString</key><string>1.2.0</string>
 	<key>CFBundleSignature</key><string>????</string>
-	<key>CFBundleVersion</key><string>110</string>
+	<key>CFBundleVersion</key><string>120</string>
 	<key>NSPrincipalClass</key><string>OBDUBRootListController</string>
 </dict>
 </plist>
